@@ -19,7 +19,7 @@ $ http --debug <COMPLETE ARGUMENT LIST THAT TRIGGERS THE ERROR>
 
 ## 2. Contributing Code and Docs
 
-Before working on a new feature or a bug, please browse [existing issues](https://github.com/httpie/httpie/issues)
+Before working on a new feature or a bug, please browse [existing issues](https://github.com/httpie/cli/issues)
 to see whether it has previously been discussed.
 
 If your change alters HTTPie’s behaviour or interface, it's a good idea to
@@ -38,13 +38,13 @@ for existing-yet-previously-untested behavior will very likely be merged.
 Therefore, docs and tests improvements are a great candidate for your first
 contribution.
 
-Consider also adding a [CHANGELOG](https://github.com/httpie/httpie/blob/master/CHANGELOG.md) entry for your changes.
+Consider also adding a [CHANGELOG](https://github.com/httpie/cli/blob/master/CHANGELOG.md) entry for your changes.
 
 ### Development Environment
 
 #### Getting the code
 
-Go to <https://github.com/httpie/httpie> and fork the project repository.
+Go to <https://github.com/httpie/cli> and fork the project repository.
 
 ```bash
 # Clone your fork
@@ -59,8 +59,10 @@ $ git checkout -b my_topical_branch
 
 #### Setup
 
-The [Makefile](https://github.com/httpie/httpie/blob/master/Makefile) contains a bunch of tasks to get you started. Just run
-the following command, which:
+The [Makefile](https://github.com/httpie/cli/blob/master/Makefile) contains a bunch of tasks to get you started.
+You can run `$ make` to see all the available tasks.
+
+To get started, run the command below, which:
 
 - Creates an isolated Python virtual environment inside `./venv`
   (via the standard library [venv](https://docs.python.org/3/library/venv.html) tool);
@@ -70,7 +72,7 @@ the following command, which:
 - and runs tests (It is the same as running `make install test`).
 
 ```bash
-$ make
+$ make all
 ```
 
 #### Python virtual environment
@@ -110,7 +112,7 @@ and that `make pycodestyle` passes.
 
 Please add tests for any new features and bug fixes.
 
-When you open a Pull Request, [GitHub Actions](https://github.com/httpie/httpie/actions) will automatically run HTTPie’s [test suite](https://github.com/httpie/httpie/tree/master/tests) against your code, so please make sure all checks pass.
+When you open a Pull Request, [GitHub Actions](https://github.com/httpie/cli/actions) will automatically run HTTPie’s [test suite](https://github.com/httpie/cli/tree/master/tests) against your code, so please make sure all checks pass.
 
 #### Running tests locally
 
@@ -142,13 +144,27 @@ $ python -m pytest tests/test_uploads.py::TestMultipartFormDataFileUpload
 $ python -m pytest tests/test_uploads.py::TestMultipartFormDataFileUpload::test_upload_ok
 ```
 
-See [Makefile](https://github.com/httpie/httpie/blob/master/Makefile) for additional development utilities.
+See [Makefile](https://github.com/httpie/cli/blob/master/Makefile) for additional development utilities.
+
+#### Running benchmarks
+
+If you are trying to work on speeding up HTTPie and want to verify your results, you
+can run the benchmark suite. The suite will compare the last commit of your branch
+with the master branch of your repository (or a fresh checkout of HTTPie master, through
+`--fresh`) and report the results back.
+
+```bash
+$ python extras/profiling/run.py
+```
+
+The benchmarks can also be run on the CI. Since it is a long process, it requires manual
+oversight. Ping one of the maintainers to get a `benchmark` label on your branch.
 
 #### Windows
 
 If you are on a Windows machine and not able to run `make`,
 follow the next steps for a basic setup. As a prerequisite, you need to have
-Python 3.6+ installed.
+Python 3.7+ installed.
 
 Create a virtual environment and activate it:
 
@@ -160,7 +176,7 @@ C:\> venv\Scripts\activate
 Install HTTPie in editable mode with all the dependencies:
 
 ```powershell
-C:\> python -m pip install --upgrade -e . -r requirements-dev.txt
+C:\> python -m pip install --upgrade -e .[dev]
 ```
 
 You should now see `(httpie)` next to your shell prompt, and
@@ -168,19 +184,19 @@ the `http` command should point to your development copy:
 
 ```powershell
 # In PowerShell:
-(httpie) PS C:\Users\ovezovs\httpie> Get-Command http
+(httpie) PS C:\Users\<user>\httpie> Get-Command http
 CommandType     Name                                               Version    Source
 -----------     ----                                               -------    ------
-Application     http.exe                                           0.0.0.0    C:\Users\ovezovs\httpie\venv\Scripts\http.exe
+Application     http.exe                                           0.0.0.0    C:\Users\<user>\httpie\venv\Scripts\http.exe
 ```
 
 ```bash
 # In CMD:
-(httpie) C:\Users\ovezovs\httpie> where http
-C:\Users\ovezovs\httpie\venv\Scripts\http.exe
-C:\Users\ovezovs\AppData\Local\Programs\Python\Python38-32\Scripts\http.exe
+(httpie) C:\Users\<user>\httpie> where http
+C:\Users\<user>\httpie\venv\Scripts\http.exe
+C:\Users\<user>\AppData\Local\Programs\Python\Python38-32\Scripts\http.exe
 
-(httpie) C:\Users\ovezovs\httpie> http --version
+(httpie) C:\Users\<user>\httpie> http --version
 2.3.0-dev
 ```
 
@@ -193,4 +209,4 @@ $ python -m pytest
 
 ______________________________________________________________________
 
-Finally, feel free to add yourself to [AUTHORS](https://github.com/httpie/httpie/blob/master/AUTHORS.md)!
+Finally, feel free to add yourself to [AUTHORS](https://github.com/httpie/cli/blob/master/AUTHORS.md)!

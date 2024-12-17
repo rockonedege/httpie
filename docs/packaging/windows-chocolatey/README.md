@@ -13,18 +13,23 @@ We will discuss setting up the environment, installing development tools, instal
 
 ## Overall process
 
-After having successfully [built and tested](#hacking) the package, push it:
+After having successfully [built and tested](#hacking) the package, either trigger the
+[`Release on Chocolatey`](https://github.com/httpie/cli/actions/workflows/release-choco.yml) action
+to push it to the `Chocolatey` store or use the CLI:
 
 ```bash
 # Replace 2.5.0 with the correct version
 choco push httpie.2.5.0.nupkg -s https://push.chocolatey.org/ --api-key=API_KEY
 ```
 
+Be aware that it might take multiple days until the release is approved, sine it goes through multiple
+sets of reviews (some of them are done manually).
+
 ## Hacking
 
 ```bash
 # Clone
-git clone --depth=1 https://github.com/httpie/httpie.git
+git clone --depth=1 https://github.com/httpie/cli.git
 cd httpie/docs/packaging/windows-chocolatey
 
 # Build

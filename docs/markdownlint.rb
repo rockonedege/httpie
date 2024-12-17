@@ -11,11 +11,20 @@ all
 # Because we use HTML to hide them on the website.
 exclude_rule 'MD002'
 
+# MD007 Allow unordered list indentation
+exclude_rule 'MD007'
+
 # MD013 Line length
 exclude_rule 'MD013'
 
 # MD014 Dollar signs used before commands without showing output
 exclude_rule 'MD014'
+
+# MD028 Blank line inside blockquote
+exclude_rule 'MD028'
+
+# MD012 Multiple consecutive blank lines
+exclude_rule 'MD012'
 
 # Tell the linter to use ordered lists:
 #   1. Foo

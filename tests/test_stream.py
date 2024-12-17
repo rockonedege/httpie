@@ -2,6 +2,7 @@ import json
 
 import pytest
 import responses
+from unittest.mock import Mock
 
 from httpie.compat import is_windows
 from httpie.cli.constants import PRETTY_MAP
@@ -10,7 +11,12 @@ from httpie.plugins import ConverterPlugin
 from httpie.plugins.registry import plugin_manager
 
 from .utils import StdinBytesIO, http, MockEnvironment, DUMMY_URL
-from .fixtures import BIN_FILE_CONTENT, BIN_FILE_PATH
+from .fixtures import (
+    ASCII_FILE_CONTENT,
+    BIN_FILE_CONTENT,
+    BIN_FILE_PATH,
+    FILE_CONTENT as UNICODE_FILE_CONTENT
+)
 
 PRETTY_OPTIONS = list(PRETTY_MAP.keys())
 
@@ -40,7 +46,7 @@ def test_pretty_redirected_stream(httpbin):
         stdout_isatty=False,
     )
     r = http('--verbose', '--pretty=all', '--stream', 'GET',
-             httpbin.url + '/get', env=env)
+             httpbin + '/get', env=env)
     assert BINARY_SUPPRESSED_NOTICE.decode() in r
 
 
@@ -51,7 +57,7 @@ def test_pretty_stream_ensure_full_stream_is_retrieved(httpbin):
         stdout_isatty=False,
     )
     r = http('--pretty=format', '--stream', 'GET',
-             httpbin.url + '/stream/3', env=env)
+             httpbin + '/stream/3', env=env)
     assert r.count('/stream/3') == 3
 
 
@@ -92,7 +98,7 @@ def test_encoded_stream(httpbin):
         stdin_isatty=False,
     )
     r = http('--pretty=none', '--stream', '--verbose', 'GET',
-             httpbin.url + '/get', env=env)
+             httpbin + '/get', env=env)
     assert BINARY_SUPPRESSED_NOTICE.decode() in r
 
 
@@ -105,5 +111,40 @@ def test_redirected_stream(httpbin):
         stdin=StdinBytesIO(BIN_FILE_PATH.read_bytes()),
     )
     r = http('--pretty=none', '--stream', '--verbose', 'GET',
-             httpbin.url + '/get', env=env)
+             httpbin + '/get', env=env)
     assert BIN_FILE_CONTENT in r
+
+
+# /drip endpoint produces 3 individual lines,
+# if we set text/event-stream HTTPie should stream
+# it by default. Otherwise, it will buffer and then
+# print.
+@pytest.mark.parametrize('extras, expected', [
+    (
+        ['Accept:text/event-stream'],
+        3
+    ),
+    (
+        ['Accept:text/event-stream; charset=utf-8'],
+        3
+    ),
+    (
+        ['Accept:text/plain'],
+        1
+    )
+])
+def test_auto_streaming(http_server, extras, expected):
+    env = MockEnvironment()
+    env.stdout.write = Mock()
+    http(http_server + '/drip', *extras, env=env)
+    assert len([
+        call_arg
+        for call_arg in env.stdout.write.call_args_list
+        if 'test' in call_arg[0][0]
+    ]) == expected
+
+
+def test_streaming_encoding_detection(http_server):
+    r = http('--stream', http_server + '/stream/encoding/random')
+    assert ASCII_FILE_CONTENT in r
+    assert UNICODE_FILE_CONTENT in r

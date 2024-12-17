@@ -19,7 +19,7 @@ class HTTPBasicAuth(requests.auth.HTTPBasicAuth):
         """
         Override username/password serialization to allow unicode.
 
-        See https://github.com/httpie/httpie/issues/212
+        See https://github.com/httpie/cli/issues/212
 
         """
         # noinspection PyTypeChecker
@@ -32,6 +32,16 @@ class HTTPBasicAuth(requests.auth.HTTPBasicAuth):
         credentials = f'{username}:{password}'
         token = b64encode(credentials.encode()).strip().decode('latin1')
         return f'Basic {token}'
+
+
+class HTTPBearerAuth(requests.auth.AuthBase):
+
+    def __init__(self, token: str) -> None:
+        self.token = token
+
+    def __call__(self, request: requests.PreparedRequest) -> requests.PreparedRequest:
+        request.headers['Authorization'] = f'Bearer {self.token}'
+        return request
 
 
 class BasicAuthPlugin(BuiltinAuthPlugin):
@@ -56,3 +66,14 @@ class DigestAuthPlugin(BuiltinAuthPlugin):
         password: str
     ) -> requests.auth.HTTPDigestAuth:
         return requests.auth.HTTPDigestAuth(username, password)
+
+
+class BearerAuthPlugin(BuiltinAuthPlugin):
+    name = 'Bearer HTTP Auth'
+    auth_type = 'bearer'
+    netrc_parse = False
+    auth_parse = False
+
+    # noinspection PyMethodOverriding
+    def get_auth(self, **kwargs) -> requests.auth.HTTPDigestAuth:
+        return HTTPBearerAuth(self.raw_auth)

@@ -13,13 +13,13 @@ We will discuss setting up the environment, installing development tools, instal
 
 ## Overall process
 
-Open a pull request to update the [downstream file](https://github.com/macports/macports-ports/blob/master/net/httpie/Portfile) ([example](https://github.com/macports/macports-ports/pull/12167)).
+Open a pull request to update the [downstream file](https://github.com/macports/macports-ports/blob/master/net/httpie/Portfile) ([example](https://github.com/macports/macports-ports/pull/12583)).
 
 - Here is how to calculate the size and checksums (replace `2.5.0` with the correct version):
 
   ```bash
   # Download the archive
-  $ wget https://api.github.com/repos/httpie/httpie/tarball/2.5.0
+  $ wget https://api.github.com/repos/httpie/cli/tarball/2.5.0
 
   # Size
   $ stat --printf="%s\n" 2.5.0

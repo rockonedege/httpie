@@ -1,15 +1,24 @@
 import os
+import json
+import sys
+import subprocess
+import time
+import contextlib
+import httpie.__main__ as main
 
 import pytest
 
 from httpie.cli.exceptions import ParseError
 from httpie.client import FORM_CONTENT_TYPE
+from httpie.compat import is_windows
 from httpie.status import ExitStatus
 from .utils import (
     MockEnvironment, StdinBytesIO, http,
     HTTP_OK,
 )
 from .fixtures import FILE_PATH_ARG, FILE_PATH, FILE_CONTENT
+
+MAX_RESPONSE_WAIT_TIME = 5
 
 
 def test_chunked_json(httpbin_with_chunked_support):
@@ -70,15 +79,123 @@ def test_chunked_stdin_multiple_chunks(httpbin_with_chunked_support):
     assert r.count(FILE_CONTENT) == 4
 
 
+def test_chunked_raw(httpbin_with_chunked_support):
+    r = http(
+        '--verbose',
+        '--chunked',
+        httpbin_with_chunked_support + '/post',
+        '--raw',
+        json.dumps({'a': 1, 'b': '2fafds', 'c': '🥰'}),
+    )
+    assert HTTP_OK in r
+    assert 'Transfer-Encoding: chunked' in r
+
+
+@contextlib.contextmanager
+def stdin_processes(httpbin, *args, warn_threshold=0.1):
+    process_1 = subprocess.Popen(
+        [
+            "cat"
+        ],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE
+    )
+    process_2 = subprocess.Popen(
+        [
+            sys.executable,
+            main.__file__,
+            "POST",
+            httpbin + "/post",
+            *args
+        ],
+        stdin=process_1.stdout,
+        stderr=subprocess.PIPE,
+        env={
+            **os.environ,
+            "HTTPIE_STDIN_READ_WARN_THRESHOLD": str(warn_threshold)
+        }
+    )
+    try:
+        yield process_1, process_2
+    finally:
+        process_1.terminate()
+        process_2.terminate()
+
+
+@pytest.mark.parametrize("wait", (True, False))
+@pytest.mark.requires_external_processes
+@pytest.mark.skipif(is_windows, reason="Windows doesn't support select() calls into files")
+def test_reading_from_stdin(httpbin, wait):
+    with stdin_processes(httpbin) as (process_1, process_2):
+        process_1.communicate(timeout=0.1, input=b"bleh")
+        # Since there is data, it doesn't matter if there
+        # you wait or not.
+        if wait:
+            time.sleep(1)
+
+        try:
+            _, errs = process_2.communicate(timeout=MAX_RESPONSE_WAIT_TIME)
+        except subprocess.TimeoutExpired:
+            errs = b''
+
+        assert b'> warning: no stdin data read in 0.1s' not in errs
+
+
+@pytest.mark.requires_external_processes
+@pytest.mark.skipif(is_windows, reason="Windows doesn't support select() calls into files")
+def test_stdin_read_warning(httpbin):
+    with stdin_processes(httpbin) as (process_1, process_2):
+        # Wait before sending any data
+        time.sleep(1)
+        process_1.communicate(timeout=0.1, input=b"bleh\n")
+
+        try:
+            _, errs = process_2.communicate(timeout=MAX_RESPONSE_WAIT_TIME)
+        except subprocess.TimeoutExpired:
+            errs = b''
+
+        assert b'> warning: no stdin data read in 0.1s' in errs
+
+
+@pytest.mark.requires_external_processes
+@pytest.mark.skipif(is_windows, reason="Windows doesn't support select() calls into files")
+def test_stdin_read_warning_with_quiet(httpbin):
+    with stdin_processes(httpbin, "-qq") as (process_1, process_2):
+        # Wait before sending any data
+        time.sleep(1)
+        process_1.communicate(timeout=0.1, input=b"bleh\n")
+
+        try:
+            _, errs = process_2.communicate(timeout=MAX_RESPONSE_WAIT_TIME)
+        except subprocess.TimeoutExpired:
+            errs = b''
+
+        assert b'> warning: no stdin data read in 0.1s' not in errs
+
+
+@pytest.mark.requires_external_processes
+@pytest.mark.skipif(is_windows, reason="Windows doesn't support select() calls into files")
+def test_stdin_read_warning_blocking_exit(httpbin):
+    # Use a very large number.
+    with stdin_processes(httpbin, warn_threshold=999) as (process_1, process_2):
+        # Wait before sending any data
+        time.sleep(1)
+        process_1.communicate(timeout=0.1, input=b"some input\n")
+
+        # If anything goes wrong, and the thread starts the block this
+        # will timeout and let us know.
+        process_2.communicate(timeout=MAX_RESPONSE_WAIT_TIME)
+
+
 class TestMultipartFormDataFileUpload:
 
     def test_non_existent_file_raises_parse_error(self, httpbin):
         with pytest.raises(ParseError):
             http('--form',
-                 'POST', httpbin.url + '/post', 'foo@/__does_not_exist__')
+                 'POST', httpbin + '/post', 'foo@/__does_not_exist__')
 
     def test_upload_ok(self, httpbin):
-        r = http('--form', '--verbose', 'POST', httpbin.url + '/post',
+        r = http('--form', '--verbose', 'POST', httpbin + '/post',
                  f'test-file@{FILE_PATH_ARG}', 'foo=bar')
         assert HTTP_OK in r
         assert 'Content-Disposition: form-data; name="foo"' in r
@@ -89,7 +206,7 @@ class TestMultipartFormDataFileUpload:
         assert 'Content-Type: text/plain' in r
 
     def test_upload_multiple_fields_with_the_same_name(self, httpbin):
-        r = http('--form', '--verbose', 'POST', httpbin.url + '/post',
+        r = http('--form', '--verbose', 'POST', httpbin + '/post',
                  f'test-file@{FILE_PATH_ARG}',
                  f'test-file@{FILE_PATH_ARG}')
         assert HTTP_OK in r
@@ -104,7 +221,7 @@ class TestMultipartFormDataFileUpload:
         r = http(
             '--form',
             '--verbose',
-            httpbin.url + '/post',
+            httpbin + '/post',
             f'test-file@{FILE_PATH_ARG};type=image/vnd.microsoft.icon'
         )
         assert HTTP_OK in r
@@ -118,7 +235,7 @@ class TestMultipartFormDataFileUpload:
         r = http(
             '--form',
             '--verbose',
-            httpbin.url + '/post',
+            httpbin + '/post',
             'AAAA=AAA',
             'BBB=BBB',
         )
@@ -129,7 +246,7 @@ class TestMultipartFormDataFileUpload:
         r = http(
             '--verbose',
             '--multipart',
-            httpbin.url + '/post',
+            httpbin + '/post',
             'AAAA=AAA',
             'BBB=BBB',
         )
@@ -144,7 +261,7 @@ class TestMultipartFormDataFileUpload:
             '--check-status',
             '--multipart',
             f'--boundary={boundary}',
-            httpbin.url + '/post',
+            httpbin + '/post',
             'AAAA=AAA',
             'BBB=BBB',
         )
@@ -158,7 +275,7 @@ class TestMultipartFormDataFileUpload:
             '--check-status',
             '--multipart',
             f'--boundary={boundary}',
-            httpbin.url + '/post',
+            httpbin + '/post',
             'Content-Type: multipart/magic',
             'AAAA=AAA',
             'BBB=BBB',
@@ -175,7 +292,7 @@ class TestMultipartFormDataFileUpload:
             '--check-status',
             '--multipart',
             f'--boundary={boundary_in_body}',
-            httpbin.url + '/post',
+            httpbin + '/post',
             f'Content-Type: multipart/magic; boundary={boundary_in_header}',
             'AAAA=AAA',
             'BBB=BBB',
@@ -225,7 +342,7 @@ class TestRequestBodyFromFilePath:
     def test_request_body_from_file_by_path(self, httpbin):
         r = http(
             '--verbose',
-            'POST', httpbin.url + '/post',
+            'POST', httpbin + '/post',
             '@' + FILE_PATH_ARG,
         )
         assert HTTP_OK in r
@@ -246,7 +363,7 @@ class TestRequestBodyFromFilePath:
     def test_request_body_from_file_by_path_with_explicit_content_type(
             self, httpbin):
         r = http('--verbose',
-                 'POST', httpbin.url + '/post', '@' + FILE_PATH_ARG,
+                 'POST', httpbin + '/post', '@' + FILE_PATH_ARG,
                  'Content-Type:text/plain; charset=UTF-8')
         assert HTTP_OK in r
         assert FILE_CONTENT in r
@@ -255,7 +372,7 @@ class TestRequestBodyFromFilePath:
     def test_request_body_from_file_by_path_no_field_name_allowed(
             self, httpbin):
         env = MockEnvironment(stdin_isatty=True)
-        r = http('POST', httpbin.url + '/post', 'field-name@' + FILE_PATH_ARG,
+        r = http('POST', httpbin + '/post', 'field-name@' + FILE_PATH_ARG,
                  env=env, tolerate_error_exit_status=True)
         assert 'perhaps you meant --form?' in r.stderr
 
@@ -264,7 +381,7 @@ class TestRequestBodyFromFilePath:
         env = MockEnvironment(stdin_isatty=False)
         r = http(
             'POST',
-            httpbin.url + '/post',
+            httpbin + '/post',
             '@' + FILE_PATH_ARG, 'foo=bar',
             env=env,
             tolerate_error_exit_status=True,
@@ -276,7 +393,7 @@ class TestRequestBodyFromFilePath:
         env = MockEnvironment(stdin_isatty=True)
         r = http(
             '--verbose',
-            'POST', httpbin.url + '/post',
+            'POST', httpbin + '/post',
             '@' + FILE_PATH_ARG,
             '@' + FILE_PATH_ARG,
             env=env,

@@ -1,6 +1,7 @@
 import os
 import tempfile
 import time
+import requests
 from unittest import mock
 from urllib.request import urlopen
 
@@ -14,7 +15,7 @@ from httpie.downloads import (
 from .utils import http, MockEnvironment
 
 
-class Response:
+class Response(requests.Response):
     # noinspection PyDefaultArgument
     def __init__(self, url, headers={}, status_code=200):
         self.url = url
@@ -124,16 +125,14 @@ class TestDownloads:
     def test_actual_download(self, httpbin_both, httpbin):
         robots_txt = '/robots.txt'
         body = urlopen(httpbin + robots_txt).read().decode()
-        env = MockEnvironment(stdin_isatty=True, stdout_isatty=False)
+        env = MockEnvironment(stdin_isatty=True, stdout_isatty=False, show_displays=True)
         r = http('--download', httpbin_both.url + robots_txt, env=env)
         assert 'Downloading' in r.stderr
-        assert '[K' in r.stderr
-        assert 'Done' in r.stderr
         assert body == r
 
-    def test_download_with_Content_Length(self, httpbin_both):
+    def test_download_with_Content_Length(self, mock_env, httpbin_both):
         with open(os.devnull, 'w') as devnull:
-            downloader = Downloader(output_file=devnull, progress_file=devnull)
+            downloader = Downloader(mock_env, output_file=devnull)
             downloader.start(
                 initial_url='/',
                 final_response=Response(
@@ -147,11 +146,10 @@ class TestDownloads:
             downloader.chunk_downloaded(b'12345')
             downloader.finish()
             assert not downloader.interrupted
-            downloader._progress_reporter.join()
 
-    def test_download_no_Content_Length(self, httpbin_both):
+    def test_download_no_Content_Length(self, mock_env, httpbin_both):
         with open(os.devnull, 'w') as devnull:
-            downloader = Downloader(output_file=devnull, progress_file=devnull)
+            downloader = Downloader(mock_env, output_file=devnull)
             downloader.start(
                 final_response=Response(url=httpbin_both.url + '/'),
                 initial_url='/'
@@ -160,15 +158,14 @@ class TestDownloads:
             downloader.chunk_downloaded(b'12345')
             downloader.finish()
             assert not downloader.interrupted
-            downloader._progress_reporter.join()
 
-    def test_download_output_from_content_disposition(self, httpbin_both):
-        with tempfile.TemporaryDirectory() as tmp_dirname, open(os.devnull, 'w') as devnull:
+    def test_download_output_from_content_disposition(self, mock_env, httpbin_both):
+        with tempfile.TemporaryDirectory() as tmp_dirname:
             orig_cwd = os.getcwd()
             os.chdir(tmp_dirname)
             try:
                 assert not os.path.isfile('filename.bin')
-                downloader = Downloader(progress_file=devnull)
+                downloader = Downloader(mock_env)
                 downloader.start(
                     final_response=Response(
                         url=httpbin_both.url + '/',
@@ -183,7 +180,6 @@ class TestDownloads:
                 downloader.finish()
                 downloader.failed()  # Stop the reporter
                 assert not downloader.interrupted
-                downloader._progress_reporter.join()
 
                 # TODO: Auto-close the file in that case?
                 downloader._output_file.close()
@@ -191,9 +187,9 @@ class TestDownloads:
             finally:
                 os.chdir(orig_cwd)
 
-    def test_download_interrupted(self, httpbin_both):
+    def test_download_interrupted(self, mock_env, httpbin_both):
         with open(os.devnull, 'w') as devnull:
-            downloader = Downloader(output_file=devnull, progress_file=devnull)
+            downloader = Downloader(mock_env, output_file=devnull)
             downloader.start(
                 final_response=Response(
                     url=httpbin_both.url + '/',
@@ -204,17 +200,16 @@ class TestDownloads:
             downloader.chunk_downloaded(b'1234')
             downloader.finish()
             assert downloader.interrupted
-            downloader._progress_reporter.join()
 
-    def test_download_resumed(self, httpbin_both):
+    def test_download_resumed(self, mock_env, httpbin_both):
         with tempfile.TemporaryDirectory() as tmp_dirname:
             file = os.path.join(tmp_dirname, 'file.bin')
             with open(file, 'a'):
                 pass
 
-            with open(os.devnull, 'w') as devnull, open(file, 'a+b') as output_file:
+            with open(file, 'a+b') as output_file:
                 # Start and interrupt the transfer after 3 bytes written
-                downloader = Downloader(output_file=output_file, progress_file=devnull)
+                downloader = Downloader(mock_env, output_file=output_file)
                 downloader.start(
                     final_response=Response(
                         url=httpbin_both.url + '/',
@@ -226,15 +221,14 @@ class TestDownloads:
                 downloader.finish()
                 downloader.failed()
                 assert downloader.interrupted
-                downloader._progress_reporter.join()
 
             # Write bytes
             with open(file, 'wb') as fh:
                 fh.write(b'123')
 
-            with open(os.devnull, 'w') as devnull, open(file, 'a+b') as output_file:
+            with open(file, 'a+b') as output_file:
                 # Resume the transfer
-                downloader = Downloader(output_file=output_file, progress_file=devnull, resume=True)
+                downloader = Downloader(mock_env, output_file=output_file, resume=True)
 
                 # Ensure `pre_request()` is working as expected too
                 headers = {}
@@ -252,7 +246,6 @@ class TestDownloads:
                 )
                 downloader.chunk_downloaded(b'45')
                 downloader.finish()
-                downloader._progress_reporter.join()
 
     def test_download_with_redirect_original_url_used_for_filename(self, httpbin):
         # Redirect from `/redirect/1` to `/get`.
@@ -262,7 +255,7 @@ class TestDownloads:
             os.chdir(tmp_dirname)
             try:
                 assert os.listdir('.') == []
-                http('--download', httpbin.url + '/redirect/1')
+                http('--download', httpbin + '/redirect/1')
                 assert os.listdir('.') == [expected_filename]
             finally:
                 os.chdir(orig_cwd)
